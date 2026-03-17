@@ -40,11 +40,11 @@
     const { useState, useEffect, useRef } = React;
 
     // --- Gemini API Helper ---
-    // שים לב! כדי שה-AI יעבוד באתר שלך ב-Wix/GitHub, עליך להדביק כאן מפתח API של Google Studio
     const apiKey = "AIzaSyCgt9BY2sjvT3Wp-RhGvYx00wH1zct5e4s";
     
     const generateWithGemini = async (prompt) => {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+      // Changed to the stable gemini-1.5-flash model which allows public API keys to connect.
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
       const payload = {
         contents: [{ parts: [{ text: prompt }] }],
         systemInstruction: { parts: [{ text: "You are an expert urban planner and regional strategist helping develop the Negev region in Israel. Respond in professional Hebrew. Do not use markdown formatting like bolding with asterisks." }] }
@@ -233,7 +233,13 @@
 
       const confirmAction = (message, onConfirm, isInfo = false) => setConfirmDialog({ isOpen: true, message, onConfirm, isInfo });
       const closeConfirm = () => setConfirmDialog({ isOpen: false, message: '', onConfirm: null, isInfo: false });
-      const executeConfirm = () => { if (confirmDialog.onConfirm) confirmDialog.onConfirm(); closeConfirm(); };
+      const executeConfirm = async () => { 
+        const action = confirmDialog.onConfirm;
+        closeConfirm();
+        if (action) {
+           await action();
+        }
+      };
 
       useEffect(() => {
         auth.signInAnonymously().catch(e => console.error("Auth error", e));
@@ -272,7 +278,7 @@
           confirmAction('ההגדרות, היישובים והפרוגרמות נשמרו בהצלחה בענן!', null, true);
         } catch(e) {
           console.error("Error saving settings:", e);
-          confirmAction('אירעה שגיאה בשמירת הנתונים: ' + e.message, null, true); 
+          confirmAction('אירעה שגיאה בשמירת הנתונים בענן: ' + e.message + '\n(יש לוודא הגדרת הרשאות קריאה וכתיבה ב-Firestore Rules)', null, true); 
         }
       };
 
@@ -280,10 +286,11 @@
         const newResponse = { ...surveyData, timestamp: Date.now() };
         try { 
           await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').add(newResponse); 
+          setView('thank_you');
         } catch(e) {
           console.error("Error submitting survey:", e);
+          confirmAction('אירעה שגיאה בשליחת הסקר למסד הנתונים: ' + e.message + '\n(יש לוודא שהוגדרו הרשאות כתיבה ב-Firestore Rules)', null, true);
         }
-        setView('thank_you');
       };
 
       const deleteResponse = (idToDelete) => {
@@ -292,7 +299,9 @@
             await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').doc(idToDelete).delete(); 
           } catch(e) {
             console.error("Error deleting response:", e);
-            alert("שגיאת מחיקה (Firebase): " + e.message);
+            setTimeout(() => {
+               confirmAction("שגיאה במחיקה ממסד הנתונים ב-Firebase: " + e.message + "\n(יש לעדכן את הרשאות ה-Rules של הפרויקט ל-allow read, write: if true;)", null, true);
+            }, 300);
           }
         });
       };
@@ -365,7 +374,7 @@
             <div className="fixed inset-0 bg-slate-900/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl" dir="rtl">
                 <h3 className="text-xl font-bold mb-3 text-slate-800">הודעת מערכת</h3>
-                <p className="text-slate-600 mb-6">{confirmDialog.message}</p>
+                <p className="text-slate-600 mb-6 whitespace-pre-wrap">{confirmDialog.message}</p>
                 <div className="flex gap-3 justify-end">
                   {confirmDialog.isInfo ? <button onClick={closeConfirm} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold transition">אישור, הבנתי</button> : <><button onClick={closeConfirm} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition">ביטול</button><button onClick={executeConfirm} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition">כן, בצע</button></>}
                 </div>
