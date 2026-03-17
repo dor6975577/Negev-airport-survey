@@ -43,22 +43,25 @@
     const apiKey = "AIzaSyCgt9BY2sjvT3Wp-RhGvYx00wH1zct5e4s";
     
     const generateWithGemini = async (prompt) => {
-      // Changed to the stable gemini-1.5-flash model which allows public API keys to connect.
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const fullPrompt = `אתה מתכנן ערים ואסטרטג אזורי שעוזר לפתח את אזור הנגב בישראל. ענה בעברית מקצועית. אל תשתמש בעיצוב Markdown (ללא כוכביות).\n\nהנתונים לניתוח:\n${prompt}`;
+      
       const payload = {
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: "You are an expert urban planner and regional strategist helping develop the Negev region in Israel. Respond in professional Hebrew. Do not use markdown formatting like bolding with asterisks." }] }
+        contents: [{ parts: [{ text: fullPrompt }] }]
       };
-      for (let i = 0; i < 5; i++) {
-        try {
-          const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          if (!res.ok) throw new Error('API Error');
-          const data = await res.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
-        } catch (err) {
-          if (i === 4) return "אירעה שגיאה בחיבור ל-AI. אנא בדוק אם הזנת מפתח API תקין בקוד המערכת.";
-          await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+      
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) {
+           const errData = await res.json();
+           console.error("API Error details:", errData);
+           throw new Error(errData.error?.message || 'שגיאה לא ידועה משרתי גוגל');
         }
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
+      } catch (err) {
+        console.error("AI Error:", err);
+        return `אירעה שגיאה בחיבור ל-AI: ${err.message}. אנא בדוק אם המפתח תקין.`;
       }
     };
 
@@ -150,7 +153,7 @@
       { id: 'p7', name: 'מרכז רפואי וחירום אזורי', description: 'מרכז רפואי חדשני המשלב מוקד רפואת דחיפות (טראומה).', minArea: 15000, maxArea: 50000, paramName: 'מיטות אשפוז', minParam: 50, maxParam: 300, color: '#ec4899', poiCategory: 'amenity=hospital', poiCategory2: 'amenity=clinic' },
     ];
 
-    // --- Custom Select Component ---
+    // --- Custom Select Component (Floating Hover Window) ---
     function ProgramSelect({ programs, selectedId, onChange, disabledPrograms }) {
       const [isOpen, setIsOpen] = useState(false);
       const dropdownRef = useRef(null);
@@ -185,11 +188,11 @@
                 return (
                   <div 
                     key={p.id} 
-                    className={`p-4 cursor-pointer border-b border-slate-50 transition-colors last:border-0 ${isDisabled ? 'opacity-40 cursor-not-allowed bg-slate-50' : 'hover:bg-blue-50'}`} 
+                    className={`p-3 cursor-pointer border-b border-slate-50 transition-colors last:border-0 ${isDisabled ? 'opacity-40 cursor-not-allowed bg-slate-50' : 'hover:bg-blue-50'}`} 
                     onClick={() => { if (!isDisabled) { onChange(p.id); setIsOpen(false); setHoveredProgram(null); } }}
-                    onMouseEnter={() => setHoveredProgram(p)}
+                    onMouseEnter={(e) => { if (!isDisabled) { setHoveredProgram(p); setMousePos({ x: e.clientX, y: e.clientY }); } }}
                     onMouseLeave={() => setHoveredProgram(null)}
-                    onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+                    onMouseMove={(e) => { if (!isDisabled) setMousePos({ x: e.clientX, y: e.clientY }); }}
                   >
                     <div className="flex items-center gap-3 pointer-events-none">
                        <span className="w-3.5 h-3.5 rounded-full shadow-sm shrink-0 border border-black/10" style={{ backgroundColor: p.color }}></span>
@@ -201,10 +204,10 @@
             </div>
           )}
 
-          {/* Portal Tooltip - escapes all overflow restrictions! */}
+          {/* Floating Portal Tooltip - tracks mouse and escapes dropdown hiding! */}
           {isOpen && hoveredProgram && hoveredProgram.description && !disabledPrograms.includes(hoveredProgram.id) && ReactDOM.createPortal(
             <div
-              className="fixed z-[99999] w-64 p-4 bg-slate-800/95 backdrop-blur text-white text-xs rounded-xl shadow-2xl pointer-events-none border border-slate-700 leading-relaxed"
+              className="fixed z-[99999] w-64 p-4 bg-slate-800/95 backdrop-blur text-white text-xs rounded-xl shadow-2xl pointer-events-none border border-slate-700 leading-relaxed transition-opacity"
               style={{ top: mousePos.y + 15, left: Math.max(10, mousePos.x - 270) }}
               dir="rtl"
             >
@@ -233,6 +236,7 @@
 
       const confirmAction = (message, onConfirm, isInfo = false) => setConfirmDialog({ isOpen: true, message, onConfirm, isInfo });
       const closeConfirm = () => setConfirmDialog({ isOpen: false, message: '', onConfirm: null, isInfo: false });
+      
       const executeConfirm = async () => { 
         const action = confirmDialog.onConfirm;
         closeConfirm();
@@ -278,7 +282,7 @@
           confirmAction('ההגדרות, היישובים והפרוגרמות נשמרו בהצלחה בענן!', null, true);
         } catch(e) {
           console.error("Error saving settings:", e);
-          confirmAction('אירעה שגיאה בשמירת הנתונים בענן: ' + e.message + '\n(יש לוודא הגדרת הרשאות קריאה וכתיבה ב-Firestore Rules)', null, true); 
+          confirmAction('אירעה שגיאה בשמירת הנתונים בענן: ' + e.message + '\n\nכדי לתקן, יש להכנס ל-Firebase -> Rules ולהגדיר allow read, write: if true;', null, true); 
         }
       };
 
@@ -289,7 +293,7 @@
           setView('thank_you');
         } catch(e) {
           console.error("Error submitting survey:", e);
-          confirmAction('אירעה שגיאה בשליחת הסקר למסד הנתונים: ' + e.message + '\n(יש לוודא שהוגדרו הרשאות כתיבה ב-Firestore Rules)', null, true);
+          confirmAction('אירעה שגיאה בשליחת הסקר למסד הנתונים: ' + e.message + '\n\nנא לוודא שהוגדרו הרשאות כתיבה ב-Firestore Rules.', null, true);
         }
       };
 
@@ -300,8 +304,8 @@
           } catch(e) {
             console.error("Error deleting response:", e);
             setTimeout(() => {
-               confirmAction("שגיאה במחיקה ממסד הנתונים ב-Firebase: " + e.message + "\n(יש לעדכן את הרשאות ה-Rules של הפרויקט ל-allow read, write: if true;)", null, true);
-            }, 300);
+               alert("שגיאת מחיקה: " + e.message + "\n\nנא לוודא שהגדרת הרשאות ב-Firebase ל- allow read, write: if true;");
+            }, 100);
           }
         });
       };
@@ -460,8 +464,7 @@
         setIsGeneratingAi(true);
         const cityName = cities.find(c => c.id === surveyData.cityId)?.name || '';
         const selectedDetails = surveyData.selectedPrograms.map((p, i) => { const prog = programs.find(pr => pr.id === p.programId); return `${i+1}. ${prog?.name} (${p.areaSqm} מ"ר, ${p.paramValue} ${prog?.paramName})`; }).join('\n');
-        const prompt = `אני ${surveyData.role} של העיר ${cityName}. במסגרת תכנון שדה התעופה החדש בנגב, בחרתי את 5 הפרוגרמות הבאות שיוקמו סמוך לעיר שלי:\n${selectedDetails}\n\nכתוב פסקה אחת קצרה (עד 4 משפטים), מקצועית ומעוררת השראה, המנתחת כיצד תמהיל זה יתרום לפיתוח הכלכלי והחברתי של ${cityName}. אל תוסיף הקדמות, פשוט ספק את הניתוח.`;
-        const response = await generateWithGemini(prompt);
+        const response = await generateWithGemini(selectedDetails);
         setAiFeedback(response);
         setIsGeneratingAi(false);
       };
@@ -546,9 +549,7 @@
           const progs = r.selectedPrograms.map(p => programs.find(pr => pr.id === p.programId)?.name).join(', ');
           return `משיב: ${r.role} מ${cName}. בחירות: ${progs}`;
         }).join('\n');
-        let prompt = `לפניך נתונים של סקר מנהיגים מקומיים בנוגע לתכנון שדה תעופה בנגב. הנתונים:\n${dataStr}\n\nאנא ספק "דוח מנהלים" קצר הכולל:\n1. מגמות בולטות בבחירת הפרוגרמות.\n2. תובנה אסטרטגית מעניינת שעולה מהנתונים.`;
-        if (responses.length === 0) prompt = "כתוב הודעה שאין עדיין מספיק נתונים בסקר כדי לייצר דוח מנהלים סטטיסטי משמעותי.";
-        const response = await generateWithGemini(prompt);
+        const response = await generateWithGemini(`לפניך נתונים של סקר מנהיגים מקומיים בנוגע לתכנון שדה תעופה בנגב. הנתונים:\n${dataStr}\n\nאנא ספק "דוח מנהלים" קצר הכולל:\n1. מגמות בולטות בבחירת הפרוגרמות.\n2. תובנה אסטרטגית מעניינת שעולה מהנתונים.`);
         setAiSummary(response);
         setIsGeneratingSummary(false);
       };
