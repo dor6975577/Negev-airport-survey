@@ -48,12 +48,12 @@
         contents: [{ parts: [{ text: fullPrompt }] }]
       };
       
-      // מנגנון גיבוי משופר: מנסה את כל המודלים האפשריים כדי לעקוף חסימות
+      // מנסה מספר מודלים כדי לעקוף חסימות או עדכוני שרת של גוגל
       const modelsToTry = [
         'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-pro',
-        'gemini-1.0-pro'
+        'gemini-1.5-flash-8b',
+        'gemini-1.0-pro',
+        'gemini-pro'
       ];
       
       let lastErrorStr = "";
@@ -69,10 +69,6 @@
           } else {
             console.warn(`Model ${model} failed:`, data.error?.message);
             if (!lastErrorStr) lastErrorStr = data.error?.message || 'שגיאה לא ידועה';
-            
-            if (lastErrorStr.includes("API key not valid")) {
-              return "שגיאה: מפתח ה-API אינו חוקי. בדוק שהעתקת אותו נכון.";
-            }
           }
         } catch (err) {
           console.error(`Network error with ${model}:`, err);
@@ -80,7 +76,8 @@
         }
       }
       
-      return `שגיאת AI: מפתח ה-API תקין אך חסר הרשאות. השרת דחה את כל המודלים.\n\nכדי לתקן זאת, חפש בגוגל 'Generative Language API', היכנס לתוצאה הראשונה של Google Cloud, וודא שהשירות מופעל (לחץ Enable).\n\n(פרטי שגיאה טכנית: ${lastErrorStr})`;
+      // הודעת שגיאה מפורטת בעברית למקרה ששירות ה-API מכובה
+      return `ה-AI חסום. המפתח תקין אך שירות הבינה המלאכותית לא מופעל בחשבון הגוגל שלך.\n\nהפתרון (לוקח דקה):\n1. חפש בגוגל 'Generative Language API' והיכנס לתוצאה של Google Cloud.\n2. ודא שאתה מחובר לחשבון.\n3. לחץ על הכפתור הכחול "Enable" (הפעל).\n4. רענן את העמוד באתר שלך וזה יעבוד!\n\n(שגיאה טכנית: ${lastErrorStr})`;
     };
 
     // --- Firebase Initialization ---
