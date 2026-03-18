@@ -48,35 +48,37 @@
         contents: [{ parts: [{ text: fullPrompt }] }]
       };
       
-      // מנגנון שמנסה את כל השילובים (v1 ו-v1beta) ואת כל המודלים
-      const endpoints = [
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`
+      // שימוש ב-v1beta בלבד, ומעבר על כל המודלים האפשריים
+      const modelsToTry = [
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.0-pro',
+        'gemini-pro'
       ];
       
-      let lastErrorStr = "";
+      let errorLog = [];
 
-      for (const url of endpoints) {
+      for (const model of modelsToTry) {
         try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
           const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           const data = await res.json();
           
           if (res.ok) {
             return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
           } else {
-            console.warn(`Endpoint failed:`, data.error?.message);
-            if (!lastErrorStr) lastErrorStr = data.error?.message || 'שגיאה לא ידועה';
+            console.warn(`Model ${model} failed:`, data.error?.message);
+            errorLog.push(`${model}: ${data.error?.message || 'שגיאה לא ידועה'}`);
           }
         } catch (err) {
-          console.error(`Network error:`, err);
-          if (!lastErrorStr) lastErrorStr = err.message;
+          console.error(`Network error with ${model}:`, err);
+          errorLog.push(`${model}: ${err.message}`);
         }
       }
       
-      // אם אף ערוץ תקשורת לא עבד - זו בעיה קשה במפתח עצמו
-      return `שגיאת מערכת AI: גוגל עדיין דוחה את המפתח.\n\nשגיאה אחרונה מגוגל: ${lastErrorStr}\n\nהפתרון המהיר והסופי: היכנס ל- aistudio.google.com/app/apikey, לחץ על "Create API key", בחר ב-"Create API key in new project" (פרויקט חדש!), והחלף את המפתח בקוד למפתח החדש שייווצר.`;
+      // אם אף מודל לא עבד, נציג את רשימת השגיאות המלאה!
+      return `שגיאת מערכת AI - גוגל דחתה את כל המודלים.\n\nפירוט השגיאות:\n${errorLog.join('\n')}\n\nאם כל השגיאות אומרות "API key not valid", ייתכן שהמפתח מוגבל או הועתק לא נכון.`;
     };
 
     // --- Firebase Initialization ---
