@@ -40,7 +40,6 @@
     const { useState, useEffect, useRef } = React;
 
     // --- Gemini API Helper ---
-    // המפתח החדש הוטמע כאן
     const apiKey = "AIzaSyC3fWJA-B4S3CSXxjQoSNJnnR4oS9lNglo";
     
     const generateWithGemini = async (prompt) => {
@@ -49,31 +48,39 @@
         contents: [{ parts: [{ text: fullPrompt }] }]
       };
       
-      const endpoints = [
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
+      // מנגנון גיבוי משופר: מנסה את כל המודלים האפשריים כדי לעקוף חסימות
+      const modelsToTry = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-pro',
+        'gemini-1.0-pro'
       ];
       
       let lastErrorStr = "";
 
-      for (const url of endpoints) {
+      for (const model of modelsToTry) {
         try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
           const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           const data = await res.json();
           
           if (res.ok) {
             return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
           } else {
-            console.warn(`Endpoint failed:`, data);
-            lastErrorStr = data.error?.message || 'שגיאה לא ידועה משרתי גוגל';
+            console.warn(`Model ${model} failed:`, data.error?.message);
+            if (!lastErrorStr) lastErrorStr = data.error?.message || 'שגיאה לא ידועה';
+            
+            if (lastErrorStr.includes("API key not valid")) {
+              return "שגיאה: מפתח ה-API אינו חוקי. בדוק שהעתקת אותו נכון.";
+            }
           }
         } catch (err) {
-          console.error(`Network error:`, err);
-          lastErrorStr = err.message;
+          console.error(`Network error with ${model}:`, err);
+          if (!lastErrorStr) lastErrorStr = err.message;
         }
       }
       
-      return `שגיאת מערכת AI (גוגל סירבה לאשר את המפתח): ${lastErrorStr}`;
+      return `שגיאת AI: מפתח ה-API תקין אך חסר הרשאות. השרת דחה את כל המודלים.\n\nכדי לתקן זאת, חפש בגוגל 'Generative Language API', היכנס לתוצאה הראשונה של Google Cloud, וודא שהשירות מופעל (לחץ Enable).\n\n(פרטי שגיאה טכנית: ${lastErrorStr})`;
     };
 
     // --- Firebase Initialization ---
