@@ -48,33 +48,35 @@
         contents: [{ parts: [{ text: fullPrompt }] }]
       };
       
-      // שימוש בגרסאות v1 הרשמיות כדי לעקוף את שגיאת ה-v1beta שחווית
-      const endpoints = [
-        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`
+      // מנגנון גיבוי משופר: מנסה את כל המודלים האפשריים (מהחדש לישן) כדי לעקוף בעיות הרשאה
+      const modelsToTry = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.0-pro',
+        'gemini-pro'
       ];
       
-      let lastErrorStr = "";
+      let firstErrorStr = "";
 
-      for (const url of endpoints) {
+      for (const model of modelsToTry) {
         try {
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
           const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           const data = await res.json();
           
           if (res.ok) {
             return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
           } else {
-            console.warn(`Endpoint failed:`, data);
-            lastErrorStr = data.error?.message || 'שגיאה לא ידועה משרתי גוגל';
+            console.warn(`Model ${model} failed:`, data.error?.message);
+            if (!firstErrorStr) firstErrorStr = data.error?.message || 'שגיאה לא ידועה משרתי גוגל';
           }
         } catch (err) {
-          console.error(`Network error:`, err);
-          lastErrorStr = err.message;
+          console.error(`Network error with ${model}:`, err);
+          if (!firstErrorStr) firstErrorStr = err.message;
         }
       }
       
-      return `שגיאת מערכת AI: ${lastErrorStr}\n(אם הבעיה נמשכת, ייתכן שיש ליצור מפתח API חדש ב-Google AI Studio ולוודא ששירותי ה-AI מאושרים לחשבון).`;
+      return `שגיאת הרשאות AI. השרת דחה את כל המודלים שניסינו.\n\nהסיבה הנפוצה ביותר היא שמפתח ה-API תקין אך נוצר בפרויקט ישן שאין לו גישה למודלים החדשים.\n\nפתרון: היכנס ל- Google AI Studio (aistudio.google.com/app/apikey), לחץ על 'Create API key' ובחר 'Create in new project'. לאחר מכן, החלף את המפתח הישן בחדש בתוך הקוד.\n\nפירוט טכני:\n${firstErrorStr}`;
     };
 
     // --- Firebase Initialization ---
@@ -282,7 +284,6 @@
         const unsub = db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses')
           .onSnapshot((snap) => {
             const res = [];
-            // מזהה המחיקה (_dbId) מקושר ישירות למסמך של Firebase ולא משתמש בשום שדה שעשוי להיות ריק!
             snap.forEach(d => {
               res.push({ ...d.data(), _dbId: d.id });
             });
@@ -320,7 +321,6 @@
 
         confirmAction('האם אתה בטוח שברצונך למחוק תגובה זו?', async () => {
           try { 
-            // המחיקה תמיד משתמשת במזהה הישיר שקיבלנו מהשרת, עוקפת כל באג קודם!
             await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').doc(dbIdToDelete).delete(); 
           } catch(e) {
             console.error("Error deleting response:", e);
