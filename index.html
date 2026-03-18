@@ -52,16 +52,18 @@
       
       try {
         const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!res.ok) {
-           const errData = await res.json();
-           console.error("API Error details:", errData);
-           throw new Error(errData.error?.message || 'שגיאה לא ידועה משרתי גוגל');
-        }
         const data = await res.json();
+        
+        if (!res.ok) {
+           console.error("API Error details:", data);
+           // מציג את השגיאה המדויקת שגוגל מחזירה כדי שנוכל לדבג בקלות
+           return `שגיאת גוגל (API Error): ${data.error?.message || 'שגיאה לא ידועה, ודא שהמפתח תקין.'}`;
+        }
+        
         return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
       } catch (err) {
         console.error("AI Error:", err);
-        return `אירעה שגיאה בחיבור ל-AI: ${err.message}. אנא בדוק אם המפתח תקין.`;
+        return `שגיאת רשת בחיבור ל-AI: ${err.message}`;
       }
     };
 
@@ -228,7 +230,7 @@
       const [programs, setPrograms] = useState(DEFAULT_PROGRAMS);
       const [responses, setResponses] = useState([]);
       const [user, setUser] = useState(null);
-      const [surveyData, setSurveyData] = useState({ id: '', name: '', role: '', cityId: '', selectedPrograms: Array(5).fill({ programId: '', lat: null, lng: null, areaSqm: 0, paramValue: 0 }) });
+      const [surveyData, setSurveyData] = useState({ name: '', role: '', cityId: '', selectedPrograms: Array(5).fill({ programId: '', lat: null, lng: null, areaSqm: 0, paramValue: 0 }) });
       const [adminCodeInput, setAdminCodeInput] = useState('');
       const [adminError, setAdminError] = useState('');
       const [adminTab, setAdminTab] = useState('summary');
@@ -270,7 +272,8 @@
         const unsub = db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses')
           .onSnapshot((snap) => {
             const res = [];
-            snap.forEach(d => res.push({ id: d.id, ...d.data() }));
+            // תיקון באג ה-ID: ה-ID של Firebase יירשם אחרון ויידרוס כל ID אחר (ריק) שאולי נשמר במסמך בטעות
+            snap.forEach(d => res.push({ ...d.data(), id: d.id }));
             setResponses(res.sort((a,b) => b.timestamp - a.timestamp));
           });
         return () => unsub();
@@ -298,6 +301,11 @@
       };
 
       const deleteResponse = (idToDelete) => {
+        if (!idToDelete) {
+           confirmAction("שגיאה במערכת: לא נמצא מזהה (ID) לתגובה זו. אנא רענן את העמוד.", null, true);
+           return;
+        }
+
         confirmAction('האם אתה בטוח שברצונך למחוק תגובה זו?', async () => {
           try { 
             await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').doc(idToDelete).delete(); 
@@ -311,7 +319,7 @@
       };
 
       const handleEditSubmission = () => setView('survey');
-      const resetSurvey = () => { setSurveyData({ id: '', name: '', role: '', cityId: '', selectedPrograms: Array(5).fill({ programId: '', lat: null, lng: null, areaSqm: 0, paramValue: 0 }) }); setView('survey'); };
+      const resetSurvey = () => { setSurveyData({ name: '', role: '', cityId: '', selectedPrograms: Array(5).fill({ programId: '', lat: null, lng: null, areaSqm: 0, paramValue: 0 }) }); setView('survey'); };
 
       const exportToXLSX = () => {
         if (!window.XLSX) return;
