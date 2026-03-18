@@ -48,29 +48,33 @@
         contents: [{ parts: [{ text: fullPrompt }] }]
       };
       
-      // מנגנון חכם שמנסה מספר מודלים כדי לוודא עבודה חלקה עם כל מפתח API
-      const modelsToTry = ['gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.5-flash'];
+      // שימוש בגרסאות v1 הרשמיות כדי לעקוף את שגיאת ה-v1beta שחווית
+      const endpoints = [
+        `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`
+      ];
+      
       let lastErrorStr = "";
 
-      for (const model of modelsToTry) {
+      for (const url of endpoints) {
         try {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
           const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           const data = await res.json();
           
           if (res.ok) {
             return data.candidates?.[0]?.content?.parts?.[0]?.text || "לא התקבלה תשובה מהמודל.";
           } else {
-            console.warn(`Model ${model} failed:`, data);
+            console.warn(`Endpoint failed:`, data);
             lastErrorStr = data.error?.message || 'שגיאה לא ידועה משרתי גוגל';
           }
         } catch (err) {
-          console.error(`Network error with ${model}:`, err);
+          console.error(`Network error:`, err);
           lastErrorStr = err.message;
         }
       }
       
-      return `שגיאת מערכת AI (לאחר ניסיון במספר מודלים): ${lastErrorStr}`;
+      return `שגיאת מערכת AI: ${lastErrorStr}\n(אם הבעיה נמשכת, ייתכן שיש ליצור מפתח API חדש ב-Google AI Studio ולוודא ששירותי ה-AI מאושרים לחשבון).`;
     };
 
     // --- Firebase Initialization ---
@@ -278,8 +282,10 @@
         const unsub = db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses')
           .onSnapshot((snap) => {
             const res = [];
-            // שימוש ב-firebaseId כדי להבטיח מזהה נקי שלא יתנגש עם נתונים קודמים שמורים
-            snap.forEach(d => res.push({ ...d.data(), firebaseId: d.id }));
+            // מזהה המחיקה (_dbId) מקושר ישירות למסמך של Firebase ולא משתמש בשום שדה שעשוי להיות ריק!
+            snap.forEach(d => {
+              res.push({ ...d.data(), _dbId: d.id });
+            });
             setResponses(res.sort((a,b) => b.timestamp - a.timestamp));
           });
         return () => unsub();
@@ -306,16 +312,16 @@
         }
       };
 
-      const deleteResponse = (firebaseDocId) => {
-        if (!firebaseDocId) {
-           confirmAction("שגיאה במערכת: לא נמצא מזהה (ID) לתגובה זו. נראה שהתגובה חסרה פרטים במסד הנתונים.", null, true);
+      const deleteResponse = (dbIdToDelete) => {
+        if (!dbIdToDelete || typeof dbIdToDelete !== 'string') {
+           confirmAction("שגיאה במערכת: לא נמצא מזהה (ID) תקין לתגובה זו. אנא רענן את העמוד עם Ctrl+F5.", null, true);
            return;
         }
 
         confirmAction('האם אתה בטוח שברצונך למחוק תגובה זו?', async () => {
           try { 
-            // שימוש ב-firebaseId מבטיח שהשגיאה של "empty path" לא תקרה
-            await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').doc(firebaseDocId).delete(); 
+            // המחיקה תמיד משתמשת במזהה הישיר שקיבלנו מהשרת, עוקפת כל באג קודם!
+            await db.collection('artifacts').doc(APP_ID).collection('public').doc('data').collection('responses').doc(dbIdToDelete).delete(); 
           } catch(e) {
             console.error("Error deleting response:", e);
             setTimeout(() => {
@@ -613,7 +619,7 @@
                                 })}
                               </div>
                             </td>
-                            <td className="p-4 align-top text-center"><button onClick={() => deleteResponse(r.firebaseId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition" title="מחק תגובה"><Icons.Trash2 className="w-5 h-5" /></button></td>
+                            <td className="p-4 align-top text-center"><button onClick={() => deleteResponse(r._dbId)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition" title="מחק תגובה"><Icons.Trash2 className="w-5 h-5" /></button></td>
                           </tr>
                         ))}
                       </tbody>
